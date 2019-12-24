@@ -1,71 +1,119 @@
+/*
+ * CS:GO - Auto Map Changer
+ * by: Henny!
+ * 
+ * Copyright (C) 2016-2019 Umut 'Henny!' Uzatmaz
+ *
+ * This file is part of the Henny! SourceMod Plugin Package.
+ *
+ * This program is free software; you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License, version 3.0, as published by the
+ * Free Software Foundation.
+ * 
+ * This program is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+ * FOR A PARTICULAR PURPOSE. See the GNU General Public License for more
+ * details.
+ *
+ * You should have received a copy of the GNU General Public License along with
+ * this program. If not, see <http://www.gnu.org/licenses/>.
+ *
+ * Not (TR);
+ * Eklentilerin bir çok kişiye ulaşması için eklentilerde bulunan küçük reklamları kaldırıp kendi isminizi yazarak insanları kandırmayın!
+ * Note (EN);
+ * Don't fool people by removing small ads in add-ons and typing your own name so that plug-ins can reach many people!
+ *
+ */
+
+#pragma semicolon 1
+
+#define DEBUG
+
 #include <sourcemod>
-//#include <colors>
 #include <cstrike>
 #include <sdktools>
-#pragma semicolon 1
-#define SARKISAYISI 7
 
-public Plugin:myinfo = 
+ConVar minPlayers;
+ConVar mapToOpen;
+
+int numPrinted = 0;
+char mapOpen[128];
+
+public Plugin myinfo =  
 {
-	name = "20 Kişinin altında Dust2",
-	author = "ImPossibLe`",
-	description = "DrK # GaminG",
-	version = "4.0"
+	name 	= "[CSGO] Otomatik Harita Değiştirici",
+	author 	= "ImPossibLe` & Fix: @KingHenny!",
+	version = "1.0.2"
 }
 
-public OnPluginStart()
+public void OnPluginStart()
 {
-	int ips[4];
-	char serverip[32];
-	int ip = GetConVarInt(FindConVar("hostip"));
-	ips[0] = (ip >> 24) & 0x000000FF;
-	ips[1] = (ip >> 16) & 0x000000FF;
-	ips[2] = (ip >> 8) & 0x000000FF;
-	ips[3] = ip & 0x000000FF;
+	HookEvent("round_end", roundEnd);
 	
-	Format(serverip, sizeof(serverip), "%d.%d.%d", ips[0], ips[1], ips[2]);
-	if(StrEqual(serverip, "185.188.144") == false || ips[3] < 2 || ips[3] > 129)
+	minPlayers = CreateConVar("sm_oto-harita_oyuncu", "20", "Harita değiştirmek için sunucuda bulunması gereken oyuncu sayısı");
+	mapToOpen = CreateConVar("sm_oto-harita_haritaIsmi", "de_dust2", "Açılacak harita ismi (Tam isim yazmalısınız!)");
+	
+	AutoExecConfig(true, "henny_oto-harita", "SourceTURK");
+}
+
+public Action roundEnd(Handle event, char[] name, bool dontBroadcast)
+{
+	if (GameRules_GetProp("m_bWarmupPeriod") != 0)
 	{
-		LogError("Bu plugin ImPossibLe` tarafindan lisanslandigi icin bu serverda calistirilmadi.");
-		PrintToChatAll(" \x04Bu plugin \x02ImPossibLe` \x04tarafından lisanslandığı için bu serverda çalıştırılmadı.");
-		SetFailState("Plugin Copyright by ImPossibLe`");
+		return Plugin_Handled;
 	}
 	
-	HookEvent("round_end", Event_RoundEnd);
-}
-
-public Action Event_RoundEnd(Handle event, char[] name, bool dontBroadcast)
-{
-	new kisiSay = 0;
-	for(new i = 1; i<=MaxClients; i++)
+	int playerNumber = 0;
+	for (int i = 1; i <= MaxClients; i++)
 	{
-		if(IsClientInGame(i))
+		if (IsClientInGame(i))
 		{
-			if(IsClientConnected(i) && GetClientTeam(i) > 1)
+			if (IsClientConnected(i) && GetClientTeam(i) > 1)
 			{
-				kisiSay++;
+				playerNumber++;
 			}
 		}
 	}
 	
-	decl String:mapName[64];
+	GetConVarString(mapToOpen, mapOpen, sizeof(mapOpen));
+	
+	char mapName[64];
 	GetCurrentMap(mapName, sizeof(mapName));
-	if(!StrEqual(mapName, "de_dust2", false))
+	if (!StrEqual(mapName, mapOpen, false))
 	{
-		if(kisiSay < 20)
+		if (playerNumber < GetConVarInt(minPlayers))
 		{
-			PrintToChatAll(" \x02[NoFL Pro Public] \x10Yeterli sayıda oyuncu olmadığı için\x04 Dust2 \x10açılıyor.");
-			ServerCommand("sm_map de_dust2");
+			numPrinted = 6;
+			CreateTimer(1.0, countdown, _, TIMER_REPEAT);
 		}
 	}
+	
+	return Plugin_Continue;
+}
+
+public Action countdown(Handle timer)
+{
+	numPrinted--;
+
+	if (numPrinted > 0)
+	{
+		if (IsMapValid(mapOpen))
+		{
+			PrintToChatAll("[\x05SourceTurk\x01] Sunucuda az kişi olduğu için, mevcut harita \x04%i \x01ile değiştiriliyor...", GetConVarInt(mapToOpen));
+			
+			char command[256];
+			Format(command, sizeof(command), "sm_map %i", GetConVarInt(mapToOpen));
+			ServerCommand(command);
+		}
+		else
+		{
+			PrintToChatAll("[\x05SourceTurk\x01] Sunucuda harita bulunamadığı için, otomatik olarak \x04de_dust2 \x01açılıyor...");
+			ServerCommand("sm_map de_dust2");
+		}
 		
-	if(GetTeamScore(2) == 16 || GetTeamScore(3) == 16)
-	{
-		if((((GetTime() + 10800) % 86400) >= 5400) && ((GetTime() + 10800) % 86400) <= 43200)
-		{
-			PrintToChatAll(" \x02[NoFL Pro Public] \x10Şuan saat 1:30-12:00 arasında olduğundan \x04 Dust2 \x10açılıyor.");
-			ServerCommand("sm_map de_dust2");
-		}
+		return Plugin_Stop;
 	}
+ 
+	PrintToChatAll("[\x05SourceTurk\x01] Sunucuda az kişi olduğu için \x10%i saniye \x01sonra harita değiştirilecektir... (Açılacak Harita: %i)", numPrinted, GetConVarInt(mapToOpen));
 	return Plugin_Continue;
 }
